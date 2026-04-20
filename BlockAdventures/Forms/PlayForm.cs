@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
+using BlockAdventures.GameLogic;
 using BlockAdventures.Models;
 using BlockAdventures.Styles;
 
@@ -40,10 +42,11 @@ namespace BlockAdventures
         private int fieldCols = 10;
         private int fieldRows = 8;
         private int cellSize = 68;
-
         private int fieldOffsetX = 90;
 
-        private Color?[,] fieldCells;
+        private FieldManager fieldManager;
+        private BonusManager bonusManager;
+
         private FigureModel currentFigure;
         private TaskModel currentTask;
 
@@ -54,14 +57,12 @@ namespace BlockAdventures
         private int grabbedFigureCellX = 0;
         private int grabbedFigureCellY = 0;
 
-        private int previewStartX = -1;
-        private int previewStartY = -1;
+        private int previewStartX = 0;
+        private int previewStartY = 0;
         private bool canPlaceFigureHere;
 
-        private int redBonus = 0;
-        private int greenBonus = 0;
-        private int yellowBonus = 0;
-        private int blueBonus = 0;
+        private Timer dragTimer;
+        private FigureGhostControl dragGhost;
 
         public PlayForm(Form menu, int currentVolume)
         {
@@ -70,7 +71,9 @@ namespace BlockAdventures
             menuForm = menu;
             musicVolume = currentVolume;
 
-            fieldCells = new Color?[fieldCols, fieldRows];
+            fieldManager = new FieldManager(fieldCols, fieldRows);
+            bonusManager = new BonusManager();
+
             currentFigure = FigureGenerator.Generate();
             currentTask = TaskGenerator.Generate();
 
@@ -79,6 +82,8 @@ namespace BlockAdventures
             DoubleBuffered = true;
 
             CreateControls();
+            CreateDragSystem();
+
             UpdateLayout();
             UpdateTaskPanel();
             UpdateScoreView();
@@ -90,10 +95,34 @@ namespace BlockAdventures
                 Invalidate();
             };
 
-            MouseMove += PlayForm_MouseMove;
-            MouseUp += PlayForm_MouseUp;
-
             CheckGameOver();
+        }
+
+        private void CreateDragSystem()
+        {
+            dragGhost = new FigureGhostControl();
+            dragGhost.Visible = false;
+            dragGhost.Enabled = false;
+            Controls.Add(dragGhost);
+
+            dragTimer = new Timer();
+            dragTimer.Interval = 10;
+            dragTimer.Tick += DragTimer_Tick;
+        }
+
+        private void DragTimer_Tick(object sender, EventArgs e)
+        {
+            if (!isDraggingFigure)
+            {
+                return;
+            }
+
+            UpdateDragFromCursor();
+
+            if ((Control.MouseButtons & MouseButtons.Left) == 0)
+            {
+                FinishFigureDrag();
+            }
         }
 
         private void CreateControls()
@@ -153,6 +182,7 @@ namespace BlockAdventures
             archaeologistPicture.Size = new Size(380, 520);
             archaeologistPicture.SizeMode = PictureBoxSizeMode.Zoom;
             archaeologistPicture.BackColor = Color.Transparent;
+            archaeologistPicture.Enabled = false;
             LoadArchaeologistImage();
 
             settingsButton = new Button();
@@ -182,7 +212,7 @@ namespace BlockAdventures
                 optionsForm.BackgroundImage = BackgroundImage;
                 optionsForm.BackgroundImageLayout = BackgroundImageLayout;
 
-                optionsForm.FormClosed += (sender, args) =>
+                optionsForm.FormClosed += (sender2, args) =>
                 {
                     musicVolume = optionsForm.MusicVolume;
                     Show();
@@ -282,7 +312,10 @@ namespace BlockAdventures
 
             settingsButton.Location = new Point(ClientSize.Width - settingsButton.Width - 40, 30);
 
-            archaeologistPicture.Location = new Point(fieldLeft - 310, fieldTop - 145);
+            archaeologistPicture.Location = new Point(
+                fieldLeft - archaeologistPicture.Width - 30,
+                fieldTop - 145
+            );
 
             blocksPanel.Location = new Point(fieldLeft + fieldWidth + 55, fieldTop - 10);
             blocksTitle.Location = new Point(blocksPanel.Width / 2 - blocksTitle.Width / 2, 14);
@@ -295,7 +328,10 @@ namespace BlockAdventures
             taskChangeCostLabel.Location = new Point(taskPanel.Width / 2 - taskChangeCostLabel.Width / 2, 260);
             changeTaskButton.Location = new Point(taskPanel.Width - 70, taskPanel.Height - 48);
 
-            bonusPanel.Location = new Point(fieldLeft - 330, fieldTop + fieldHeight - 170);
+            bonusPanel.Location = new Point(
+                fieldLeft - bonusPanel.Width - 30,
+                fieldTop + fieldHeight - 170
+            );
             bonusTitle.Location = new Point(bonusPanel.Width / 2 - bonusTitle.Width / 2, 12);
 
             scoreBar.Invalidate();
@@ -356,24 +392,6 @@ namespace BlockAdventures
             );
         }
 
-        private void AddScore(int points)
-        {
-            score += points;
-            UpdateScoreView();
-        }
-
-        private bool TrySpendScore(int points)
-        {
-            if (score < points)
-            {
-                return false;
-            }
-
-            score -= points;
-            UpdateScoreView();
-            return true;
-        }
-
         private int GetFigureChangeCost()
         {
             if (score <= 0)
@@ -392,6 +410,24 @@ namespace BlockAdventures
             }
 
             return (int)Math.Ceiling(score * 0.20);
+        }
+
+        private void AddScore(int points)
+        {
+            score += points;
+            UpdateScoreView();
+        }
+
+        private bool TrySpendScore(int points)
+        {
+            if (score < points)
+            {
+                return false;
+            }
+
+            score -= points;
+            UpdateScoreView();
+            return true;
         }
 
         private void ChangeFigure()
@@ -429,21 +465,13 @@ namespace BlockAdventures
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-
             DrawField(e.Graphics);
-
-            if (isDraggingFigure)
-            {
-                DrawDraggedFigure(e.Graphics);
-            }
         }
 
         private void DrawField(Graphics graphics)
         {
             var fieldLeft = GetFieldLeft();
             var fieldTop = GetFieldTop();
-            var fieldWidth = fieldCols * cellSize;
-            var fieldHeight = fieldRows * cellSize;
 
             using (var borderPen = new Pen(Theme.FieldBorderColor, 2))
             using (var outerPen = new Pen(Theme.FieldOuterBorderColor, 4))
@@ -456,7 +484,7 @@ namespace BlockAdventures
                         var cellTop = fieldTop + row * cellSize;
                         var cellRect = new Rectangle(cellLeft, cellTop, cellSize, cellSize);
 
-                        var color = fieldCells[col, row] ?? Theme.FieldCellColor;
+                        var color = fieldManager.GetCellColor(col, row, Theme.FieldCellColor);
 
                         using (var cellBrush = new SolidBrush(color))
                         {
@@ -467,7 +495,13 @@ namespace BlockAdventures
                     }
                 }
 
-                graphics.DrawRectangle(outerPen, fieldLeft - 2, fieldTop - 2, fieldWidth + 3, fieldHeight + 3);
+                graphics.DrawRectangle(
+                    outerPen,
+                    fieldLeft - 2,
+                    fieldTop - 2,
+                    fieldCols * cellSize + 3,
+                    fieldRows * cellSize + 3
+                );
             }
         }
 
@@ -479,6 +513,11 @@ namespace BlockAdventures
         private void DrawFigurePreview(Graphics graphics)
         {
             if (currentFigure == null)
+            {
+                return;
+            }
+
+            if (isDraggingFigure)
             {
                 return;
             }
@@ -513,51 +552,13 @@ namespace BlockAdventures
             }
         }
 
-        private void DrawDraggedFigure(Graphics graphics)
+        private void BlocksPanel_MouseDown(object sender, MouseEventArgs e)
         {
-            if (currentFigure == null)
+            if (e.Button != MouseButtons.Left)
             {
                 return;
             }
 
-            var previewColor = currentFigure.Color;
-
-            if (!canPlaceFigureHere)
-            {
-                previewColor = Color.FromArgb(140, 140, 140);
-            }
-
-            var drawLeft = mousePointOnForm.X - dragOffset.X;
-            var drawTop = mousePointOnForm.Y - dragOffset.Y;
-
-            using (var brush = new SolidBrush(Color.FromArgb(180, previewColor)))
-            using (var pen = new Pen(Color.FromArgb(70, 55, 25), 2))
-            {
-                for (var row = 0; row < 3; row++)
-                {
-                    for (var col = 0; col < 3; col++)
-                    {
-                        if (!currentFigure.Cells[col, row])
-                        {
-                            continue;
-                        }
-
-                        var rect = new Rectangle(
-                            drawLeft + col * cellSize,
-                            drawTop + row * cellSize,
-                            cellSize,
-                            cellSize
-                        );
-
-                        graphics.FillRectangle(brush, rect);
-                        graphics.DrawRectangle(pen, rect);
-                    }
-                }
-            }
-        }
-
-        private void BlocksPanel_MouseDown(object sender, MouseEventArgs e)
-        {
             var previewCellSize = 42;
             var previewLeft = 85;
             var previewTop = 72;
@@ -594,34 +595,62 @@ namespace BlockAdventures
                 return;
             }
 
+            StartFigureDrag(e, clickedCellX, clickedCellY, previewCellSize, previewLeft, previewTop);
+        }
+
+        private void StartFigureDrag(
+            MouseEventArgs e,
+            int clickedCellX,
+            int clickedCellY,
+            int previewCellSize,
+            int previewLeft,
+            int previewTop)
+        {
             isDraggingFigure = true;
-            mousePointOnForm = PointToClient(Cursor.Position);
 
             grabbedFigureCellX = clickedCellX;
             grabbedFigureCellY = clickedCellY;
 
-            var minCol = GetFigureMinCol();
-            var minRow = GetFigureMinRow();
-            var maxCol = GetFigureMaxCol();
-            var maxRow = GetFigureMaxRow();
+            var insideCellX = e.X - (previewLeft + clickedCellX * previewCellSize);
+            var insideCellY = e.Y - (previewTop + clickedCellY * previewCellSize);
 
-            var figureWidthCells = maxCol - minCol + 1;
-            var figureHeightCells = maxRow - minRow + 1;
+            dragOffset = new Point(
+                clickedCellX * cellSize + insideCellX * cellSize / previewCellSize,
+                clickedCellY * cellSize + insideCellY * cellSize / previewCellSize
+            );
 
-            var figureWidth = figureWidthCells * cellSize;
-            var figureHeight = figureHeightCells * cellSize;
+            dragGhost.SetFigure(currentFigure, cellSize);
+            dragGhost.Visible = true;
+            dragGhost.BringToFront();
 
-            dragOffset = new Point(figureWidth / 2, figureHeight / 2);
+            blocksPanel.Invalidate();
 
-            previewStartX = -1;
-            previewStartY = -1;
-            canPlaceFigureHere = false;
-
-            UpdatePreviewPosition();
-            Invalidate();
+            UpdateDragFromCursor();
+            dragTimer.Start();
         }
 
-        private void PlayForm_MouseMove(object sender, MouseEventArgs e)
+        private void FinishFigureDrag()
+        {
+            var shouldPutFigure = canPlaceFigureHere;
+            var startCol = previewStartX;
+            var startRow = previewStartY;
+
+            isDraggingFigure = false;
+            canPlaceFigureHere = false;
+
+            dragTimer.Stop();
+            dragGhost.Visible = false;
+
+            blocksPanel.Invalidate();
+            Invalidate();
+
+            if (shouldPutFigure)
+            {
+                PutFigureOnField(startCol, startRow);
+            }
+        }
+
+        private void UpdateDragFromCursor()
         {
             if (!isDraggingFigure)
             {
@@ -629,28 +658,20 @@ namespace BlockAdventures
             }
 
             mousePointOnForm = PointToClient(Cursor.Position);
+
             UpdatePreviewPosition();
-            Invalidate();
+            UpdateGhostPosition();
+
+            dragGhost.CanPlace = canPlaceFigureHere;
+            dragGhost.Invalidate();
         }
 
-        private void PlayForm_MouseUp(object sender, MouseEventArgs e)
+        private void UpdateGhostPosition()
         {
-            if (!isDraggingFigure)
-            {
-                return;
-            }
+            var drawLeft = mousePointOnForm.X - dragOffset.X;
+            var drawTop = mousePointOnForm.Y - dragOffset.Y;
 
-            if (canPlaceFigureHere)
-            {
-                PutFigureOnField(previewStartX, previewStartY);
-            }
-
-            isDraggingFigure = false;
-            previewStartX = -1;
-            previewStartY = -1;
-            canPlaceFigureHere = false;
-
-            Invalidate();
+            dragGhost.Location = new Point(drawLeft, drawTop);
         }
 
         private int GetFieldLeft()
@@ -665,79 +686,7 @@ namespace BlockAdventures
             return (ClientSize.Height - fieldHeight) / 2 + 30;
         }
 
-        private int GetFigureMinCol()
-        {
-            var minCol = 3;
-
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (currentFigure.Cells[col, row] && col < minCol)
-                    {
-                        minCol = col;
-                    }
-                }
-            }
-
-            return minCol;
-        }
-
-        private int GetFigureMinRow()
-        {
-            var minRow = 3;
-
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (currentFigure.Cells[col, row] && row < minRow)
-                    {
-                        minRow = row;
-                    }
-                }
-            }
-
-            return minRow;
-        }
-
-        private int GetFigureMaxCol()
-        {
-            var maxCol = 0;
-
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (currentFigure.Cells[col, row] && col > maxCol)
-                    {
-                        maxCol = col;
-                    }
-                }
-            }
-
-            return maxCol;
-        }
-
-        private int GetFigureMaxRow()
-        {
-            var maxRow = 0;
-
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (currentFigure.Cells[col, row] && row > maxRow)
-                    {
-                        maxRow = row;
-                    }
-                }
-            }
-
-            return maxRow;
-        }
-
-        private bool IsMouseNearField()
+        private bool IsCursorInsideField()
         {
             var fieldLeft = GetFieldLeft();
             var fieldTop = GetFieldTop();
@@ -745,523 +694,69 @@ namespace BlockAdventures
             var fieldHeight = fieldRows * cellSize;
 
             return
-                mousePointOnForm.X >= fieldLeft - cellSize * 5 &&
-                mousePointOnForm.X <= fieldLeft + fieldWidth + cellSize * 5 &&
-                mousePointOnForm.Y >= fieldTop - cellSize * 3 &&
-                mousePointOnForm.Y <= fieldTop + fieldHeight + cellSize * 3;
+                mousePointOnForm.X >= fieldLeft &&
+                mousePointOnForm.X < fieldLeft + fieldWidth &&
+                mousePointOnForm.Y >= fieldTop &&
+                mousePointOnForm.Y < fieldTop + fieldHeight;
         }
 
         private void UpdatePreviewPosition()
         {
-            if (!IsMouseNearField())
-            {
-                previewStartX = -1;
-                previewStartY = -1;
-                canPlaceFigureHere = false;
-                return;
-            }
-
             var fieldLeft = GetFieldLeft();
             var fieldTop = GetFieldTop();
 
             var cellUnderMouseX = (int)Math.Floor((double)(mousePointOnForm.X - fieldLeft) / cellSize);
             var cellUnderMouseY = (int)Math.Floor((double)(mousePointOnForm.Y - fieldTop) / cellSize);
 
-            var startCol = cellUnderMouseX - grabbedFigureCellX;
-            var startRow = cellUnderMouseY - grabbedFigureCellY;
+            previewStartX = cellUnderMouseX - grabbedFigureCellX;
+            previewStartY = cellUnderMouseY - grabbedFigureCellY;
 
-            var minCol = GetFigureMinCol();
-            var minRow = GetFigureMinRow();
-            var maxCol = GetFigureMaxCol();
-            var maxRow = GetFigureMaxRow();
-
-            var minStartCol = -minCol;
-            var minStartRow = -minRow;
-            var maxStartCol = fieldCols - 1 - maxCol;
-            var maxStartRow = fieldRows - 1 - maxRow;
-
-            if (startCol < minStartCol)
+            if (!IsCursorInsideField())
             {
-                startCol = minStartCol;
+                canPlaceFigureHere = false;
+                return;
             }
 
-            if (startRow < minStartRow)
-            {
-                startRow = minStartRow;
-            }
-
-            if (startCol > maxStartCol)
-            {
-                startCol = maxStartCol;
-            }
-
-            if (startRow > maxStartRow)
-            {
-                startRow = maxStartRow;
-            }
-
-            previewStartX = startCol;
-            previewStartY = startRow;
-            canPlaceFigureHere = CanPutFigure(previewStartX, previewStartY);
+            canPlaceFigureHere = fieldManager.CanPutFigure(currentFigure, previewStartX, previewStartY);
         }
 
         private void PutFigureOnField(int startCol, int startRow)
         {
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (!currentFigure.Cells[col, row])
-                    {
-                        continue;
-                    }
+            fieldManager.PutFigure(currentFigure, startCol, startRow);
 
-                    fieldCells[startCol + col, startRow + row] = currentFigure.Color;
-                }
-            }
-
-            var taskIsDone = CheckTaskByField();
+            var taskIsDone = TaskChecker.CheckTask(
+                currentTask,
+                fieldManager.Cells,
+                fieldCols,
+                fieldRows
+            );
 
             if (taskIsDone)
             {
                 AddScore(currentTask.Reward);
-                AddBonusProgress(currentTask.BonusColor, 25);
+                bonusManager.AddProgress(currentTask.BonusColor, 25);
 
                 currentTask = TaskGenerator.Generate();
                 UpdateTaskPanel();
+
+                bonusPanel.Invalidate();
             }
 
-            ClearFilledRows();
-            ClearFilledColumns();
+            fieldManager.ClearFilledRows();
+            fieldManager.ClearFilledColumns();
 
             currentFigure = FigureGenerator.Generate();
+
             blocksPanel.Invalidate();
+            bonusPanel.Invalidate();
 
             CheckGameOver();
             Invalidate();
         }
 
-        private void AddBonusProgress(BonusColor bonusColor, int value)
-        {
-            if (bonusColor == BonusColor.Red)
-            {
-                redBonus += value;
-                if (redBonus > 100)
-                {
-                    redBonus = 100;
-                }
-            }
-
-            if (bonusColor == BonusColor.Green)
-            {
-                greenBonus += value;
-                if (greenBonus > 100)
-                {
-                    greenBonus = 100;
-                }
-            }
-
-            if (bonusColor == BonusColor.Yellow)
-            {
-                yellowBonus += value;
-                if (yellowBonus > 100)
-                {
-                    yellowBonus = 100;
-                }
-            }
-
-            if (bonusColor == BonusColor.Blue)
-            {
-                blueBonus += value;
-                if (blueBonus > 100)
-                {
-                    blueBonus = 100;
-                }
-            }
-
-            bonusPanel.Invalidate();
-        }
-
-        private bool CheckTaskByField()
-        {
-            if (currentTask.Type == TaskType.FillCornersRed)
-            {
-                var red = GetRedColor();
-
-                return IsCellColor(0, 0, red) &&
-                       IsCellColor(fieldCols - 1, 0, red) &&
-                       IsCellColor(0, fieldRows - 1, red) &&
-                       IsCellColor(fieldCols - 1, fieldRows - 1, red);
-            }
-
-            if (currentTask.Type == TaskType.FillRowRed)
-            {
-                var red = GetRedColor();
-
-                for (var row = 0; row < fieldRows; row++)
-                {
-                    var fullRedRow = true;
-
-                    for (var col = 0; col < fieldCols; col++)
-                    {
-                        if (!IsCellColor(col, row, red))
-                        {
-                            fullRedRow = false;
-                            break;
-                        }
-                    }
-
-                    if (fullRedRow)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            if (currentTask.Type == TaskType.FillRightColumnBlue)
-            {
-                var blue = GetBlueColor();
-                var lastCol = fieldCols - 1;
-
-                for (var row = 0; row < fieldRows; row++)
-                {
-                    if (!IsCellColor(lastCol, row, blue))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            if (currentTask.Type == TaskType.FillCornersBlue)
-            {
-                var blue = GetBlueColor();
-
-                return IsCellColor(0, 0, blue) &&
-                       IsCellColor(fieldCols - 1, 0, blue) &&
-                       IsCellColor(0, fieldRows - 1, blue) &&
-                       IsCellColor(fieldCols - 1, fieldRows - 1, blue);
-            }
-
-            if (currentTask.Type == TaskType.FillCenterGreen)
-            {
-                var green = GetGreenColor();
-
-                return IsCellColor(4, 3, green) &&
-                       IsCellColor(5, 3, green) &&
-                       IsCellColor(4, 4, green) &&
-                       IsCellColor(5, 4, green);
-            }
-
-            if (currentTask.Type == TaskType.FillColumnGreen)
-            {
-                var green = GetGreenColor();
-
-                for (var col = 0; col < fieldCols; col++)
-                {
-                    var fullGreenColumn = true;
-
-                    for (var row = 0; row < fieldRows; row++)
-                    {
-                        if (!IsCellColor(col, row, green))
-                        {
-                            fullGreenColumn = false;
-                            break;
-                        }
-                    }
-
-                    if (fullGreenColumn)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            if (currentTask.Type == TaskType.FillTopRowYellow)
-            {
-                var yellow = GetYellowColor();
-
-                for (var col = 0; col < fieldCols; col++)
-                {
-                    if (!IsCellColor(col, 0, yellow))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            if (currentTask.Type == TaskType.FillCenterYellow)
-            {
-                var yellow = GetYellowColor();
-
-                return IsCellColor(4, 3, yellow) &&
-                       IsCellColor(5, 3, yellow) &&
-                       IsCellColor(4, 4, yellow) &&
-                       IsCellColor(5, 4, yellow);
-            }
-
-            return false;
-        }
-
-        private Color GetRedColor()
-        {
-            return Color.FromArgb(196, 72, 56);
-        }
-
-        private Color GetGreenColor()
-        {
-            return Color.FromArgb(92, 176, 78);
-        }
-
-        private Color GetYellowColor()
-        {
-            return Color.FromArgb(222, 198, 68);
-        }
-
-        private Color GetBlueColor()
-        {
-            return Color.FromArgb(78, 180, 220);
-        }
-
-        private bool IsCellColor(int col, int row, Color neededColor)
-        {
-            if (!fieldCells[col, row].HasValue)
-            {
-                return false;
-            }
-
-            return fieldCells[col, row].Value.ToArgb() == neededColor.ToArgb();
-        }
-
-        private void BonusPanel_MouseClick(object sender, MouseEventArgs e)
-        {
-            var clickedColor = GetClickedBonusColor(e.Location);
-
-            if (clickedColor == BonusColor.Red && redBonus == 100)
-            {
-                ClearColorFromField(GetRedColor());
-                redBonus = 0;
-            }
-
-            if (clickedColor == BonusColor.Yellow && yellowBonus == 100)
-            {
-                ClearColorFromField(GetYellowColor());
-                yellowBonus = 0;
-            }
-
-            if (clickedColor == BonusColor.Green && greenBonus == 100)
-            {
-                ClearColorFromField(GetGreenColor());
-                greenBonus = 0;
-            }
-
-            if (clickedColor == BonusColor.Blue && blueBonus == 100)
-            {
-                ClearColorFromField(GetBlueColor());
-                blueBonus = 0;
-            }
-
-            bonusPanel.Invalidate();
-            Invalidate();
-        }
-
-        private BonusColor GetClickedBonusColor(Point point)
-        {
-            var centerX = bonusPanel.Width / 2;
-            var topY = 72;
-            var size = 105;
-
-            var top = new Point(centerX, topY);
-            var left = new Point(centerX - size / 2, topY + size / 2);
-            var right = new Point(centerX + size / 2, topY + size / 2);
-            var bottom = new Point(centerX, topY + size);
-            var center = new Point(centerX, topY + size / 2);
-
-            if (IsPointInsideTriangle(point, top, left, center))
-            {
-                return BonusColor.Red;
-            }
-
-            if (IsPointInsideTriangle(point, top, right, center))
-            {
-                return BonusColor.Yellow;
-            }
-
-            if (IsPointInsideTriangle(point, left, bottom, center))
-            {
-                return BonusColor.Green;
-            }
-
-            if (IsPointInsideTriangle(point, right, bottom, center))
-            {
-                return BonusColor.Blue;
-            }
-
-            return BonusColor.None;
-        }
-
-        private bool IsPointInsideTriangle(Point p, Point p1, Point p2, Point p3)
-        {
-            var d1 = GetTriangleSign(p, p1, p2);
-            var d2 = GetTriangleSign(p, p2, p3);
-            var d3 = GetTriangleSign(p, p3, p1);
-
-            var hasNegative = d1 < 0 || d2 < 0 || d3 < 0;
-            var hasPositive = d1 > 0 || d2 > 0 || d3 > 0;
-
-            return !(hasNegative && hasPositive);
-        }
-
-        private float GetTriangleSign(Point p1, Point p2, Point p3)
-        {
-            return (p1.X - p3.X) * (p2.Y - p3.Y) - (p2.X - p3.X) * (p1.Y - p3.Y);
-        }
-
-        private void ClearColorFromField(Color color)
-        {
-            for (var row = 0; row < fieldRows; row++)
-            {
-                for (var col = 0; col < fieldCols; col++)
-                {
-                    if (IsCellColor(col, row, color))
-                    {
-                        fieldCells[col, row] = null;
-                    }
-                }
-            }
-        }
-
-        private int ClearFilledRows()
-        {
-            var clearedRows = 0;
-
-            for (var row = 0; row < fieldRows; row++)
-            {
-                var rowIsFull = true;
-
-                for (var col = 0; col < fieldCols; col++)
-                {
-                    if (!fieldCells[col, row].HasValue)
-                    {
-                        rowIsFull = false;
-                        break;
-                    }
-                }
-
-                if (!rowIsFull)
-                {
-                    continue;
-                }
-
-                clearedRows++;
-
-                for (var col = 0; col < fieldCols; col++)
-                {
-                    fieldCells[col, row] = null;
-                }
-            }
-
-            return clearedRows;
-        }
-
-        private int ClearFilledColumns()
-        {
-            var clearedColumns = 0;
-
-            for (var col = 0; col < fieldCols; col++)
-            {
-                var columnIsFull = true;
-
-                for (var row = 0; row < fieldRows; row++)
-                {
-                    if (!fieldCells[col, row].HasValue)
-                    {
-                        columnIsFull = false;
-                        break;
-                    }
-                }
-
-                if (!columnIsFull)
-                {
-                    continue;
-                }
-
-                clearedColumns++;
-
-                for (var row = 0; row < fieldRows; row++)
-                {
-                    fieldCells[col, row] = null;
-                }
-            }
-
-            return clearedColumns;
-        }
-
-        private bool CanPutFigure(int startCol, int startRow)
-        {
-            for (var row = 0; row < 3; row++)
-            {
-                for (var col = 0; col < 3; col++)
-                {
-                    if (!currentFigure.Cells[col, row])
-                    {
-                        continue;
-                    }
-
-                    var fieldCol = startCol + col;
-                    var fieldRow = startRow + row;
-
-                    if (fieldCol < 0 || fieldCol >= fieldCols || fieldRow < 0 || fieldRow >= fieldRows)
-                    {
-                        return false;
-                    }
-
-                    if (fieldCells[fieldCol, fieldRow].HasValue)
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        private bool HasAnyPlaceForFigure()
-        {
-            var minCol = GetFigureMinCol();
-            var minRow = GetFigureMinRow();
-            var maxCol = GetFigureMaxCol();
-            var maxRow = GetFigureMaxRow();
-
-            var minStartCol = -minCol;
-            var minStartRow = -minRow;
-            var maxStartCol = fieldCols - 1 - maxCol;
-            var maxStartRow = fieldRows - 1 - maxRow;
-
-            for (var row = minStartRow; row <= maxStartRow; row++)
-            {
-                for (var col = minStartCol; col <= maxStartCol; col++)
-                {
-                    if (CanPutFigure(col, row))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         private void CheckGameOver()
         {
-            if (HasAnyPlaceForFigure())
+            if (fieldManager.HasAnyPlaceForFigure(currentFigure))
             {
                 return;
             }
@@ -1271,57 +766,27 @@ namespace BlockAdventures
             Close();
         }
 
-        private void BonusPanel_Paint(object sender, PaintEventArgs e)
+        private void BonusPanel_MouseClick(object sender, MouseEventArgs e)
         {
-            var graphics = e.Graphics;
+            var clickedColor = bonusManager.GetClickedBonusColor(e.Location, bonusPanel.Width, bonusPanel.Height);
 
-            var centerX = bonusPanel.Width / 2;
-            var topY = 72;
-            var size = 105;
-
-            var top = new Point(centerX, topY);
-            var left = new Point(centerX - size / 2, topY + size / 2);
-            var right = new Point(centerX + size / 2, topY + size / 2);
-            var bottom = new Point(centerX, topY + size);
-            var center = new Point(centerX, topY + size / 2);
-
-            DrawBonusPart(graphics, center, top, left, GetRedColor(), redBonus);
-            DrawBonusPart(graphics, center, top, right, GetYellowColor(), yellowBonus);
-            DrawBonusPart(graphics, center, left, bottom, GetGreenColor(), greenBonus);
-            DrawBonusPart(graphics, center, right, bottom, GetBlueColor(), blueBonus);
-
-            using (var pen = new Pen(Color.FromArgb(60, 50, 30), 3))
-            {
-                graphics.DrawPolygon(pen, new[] { top, left, bottom, right });
-                graphics.DrawLine(pen, top, bottom);
-                graphics.DrawLine(pen, left, right);
-            }
-        }
-
-        private void DrawBonusPart(Graphics graphics, Point center, Point p1, Point p2, Color color, int progress)
-        {
-            if (progress <= 0)
+            if (!bonusManager.IsReady(clickedColor))
             {
                 return;
             }
 
-            var k = progress / 100f;
+            var color = TaskChecker.GetColorByBonus(clickedColor);
 
-            var newP1 = GetScaledPoint(center, p1, k);
-            var newP2 = GetScaledPoint(center, p2, k);
+            fieldManager.ClearColor(color);
+            bonusManager.Reset(clickedColor);
 
-            using (var brush = new SolidBrush(color))
-            {
-                graphics.FillPolygon(brush, new[] { center, newP1, newP2 });
-            }
+            bonusPanel.Invalidate();
+            Invalidate();
         }
 
-        private Point GetScaledPoint(Point center, Point target, float k)
+        private void BonusPanel_Paint(object sender, PaintEventArgs e)
         {
-            var x = center.X + (int)((target.X - center.X) * k);
-            var y = center.Y + (int)((target.Y - center.Y) * k);
-
-            return new Point(x, y);
+            bonusManager.Draw(e.Graphics, bonusPanel.Width, bonusPanel.Height);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -1334,6 +799,108 @@ namespace BlockAdventures
             }
 
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private class FigureGhostControl : Control
+        {
+            public FigureModel Figure { get; private set; }
+            public int CellSize { get; private set; }
+            public bool CanPlace { get; set; }
+
+            public FigureGhostControl()
+            {
+                SetStyle(ControlStyles.AllPaintingInWmPaint |
+                         ControlStyles.UserPaint |
+                         ControlStyles.OptimizedDoubleBuffer |
+                         ControlStyles.ResizeRedraw, true);
+            }
+
+            public void SetFigure(FigureModel figure, int cellSize)
+            {
+                Figure = figure;
+                CellSize = cellSize;
+
+                Size = new Size(3 * cellSize, 3 * cellSize);
+                UpdateFigureRegion();
+                Invalidate();
+            }
+
+            private void UpdateFigureRegion()
+            {
+                if (Figure == null)
+                {
+                    return;
+                }
+
+                using (var path = new GraphicsPath())
+                {
+                    for (var row = 0; row < 3; row++)
+                    {
+                        for (var col = 0; col < 3; col++)
+                        {
+                            if (!Figure.Cells[col, row])
+                            {
+                                continue;
+                            }
+
+                            path.AddRectangle(new Rectangle(
+                                col * CellSize,
+                                row * CellSize,
+                                CellSize,
+                                CellSize));
+                        }
+                    }
+
+                    if (Region != null)
+                    {
+                        Region.Dispose();
+                    }
+
+                    Region = new Region(path);
+                }
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+
+                if (Figure == null)
+                {
+                    return;
+                }
+
+                var drawColor = Figure.Color;
+
+                if (!CanPlace)
+                {
+                    drawColor = Color.FromArgb(140, 140, 140);
+                }
+
+                using (var brush = new SolidBrush(Color.FromArgb(180, drawColor)))
+                using (var pen = new Pen(Color.FromArgb(70, 55, 25), 2))
+                {
+                    for (var row = 0; row < 3; row++)
+                    {
+                        for (var col = 0; col < 3; col++)
+                        {
+                            if (!Figure.Cells[col, row])
+                            {
+                                continue;
+                            }
+
+                            var rect = new Rectangle(
+                                col * CellSize,
+                                row * CellSize,
+                                CellSize,
+                                CellSize
+                            );
+
+                            e.Graphics.FillRectangle(brush, rect);
+                            e.Graphics.DrawRectangle(pen, rect);
+                        }
+                    }
+                }
+            }
         }
 
         private class JungleMenuColorTable : ProfessionalColorTable
@@ -1360,7 +927,7 @@ namespace BlockAdventures
 
             public override Color MenuItemSelectedGradientBegin
             {
-                get { return Color.FromArgb(110, 95, 60); }ё
+                get { return Color.FromArgb(110, 95, 60); }
             }
 
             public override Color MenuItemSelectedGradientEnd

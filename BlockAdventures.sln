@@ -1,26 +1,36 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.37111.16 d17.14
+VisualStudioVersion = 17.14.37111.16
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlockAdventures", "BlockAdventures\BlockAdventures.csproj", "{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlockAdventures.Core", "..\BlockAdventures.Core\BlockAdventures.Core.csproj", "{C51388AF-67CB-4CB8-B157-D72A5F34E00C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlockAdventures.Tests", "BlockAdventures.Tests\BlockAdventures.Tests.csproj", "{7CC26565-081D-4341-9423-BFD465381818}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Debug|x86.ActiveCfg = Debug|x86
+		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Debug|x86.Build.0 = Debug|x86
 		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{C51388AF-67CB-4CB8-B157-D72A5F34E00C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{C51388AF-67CB-4CB8-B157-D72A5F34E00C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{C51388AF-67CB-4CB8-B157-D72A5F34E00C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{C51388AF-67CB-4CB8-B157-D72A5F34E00C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Release|x86.ActiveCfg = Release|x86
+		{F7348931-2D7D-4317-8A2D-EA03D1FC4BA6}.Release|x86.Build.0 = Release|x86
+		{7CC26565-081D-4341-9423-BFD465381818}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Debug|x86.Build.0 = Debug|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Release|x86.ActiveCfg = Release|Any CPU
+		{7CC26565-081D-4341-9423-BFD465381818}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

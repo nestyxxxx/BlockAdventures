@@ -7,10 +7,10 @@ namespace BlockAdventures
 {
     public partial class GameForm : Form
     {
-        private Label title;
-        private Button btnStart;
-        private Button btnOptions;
-        private Button btnExit;
+        private Label titleLabel;
+        private Button startButton;
+        private Button optionsButton;
+        private Button exitButton;
 
         private int musicVolume = 50;
 
@@ -18,97 +18,115 @@ namespace BlockAdventures
         {
             InitializeComponent();
 
-            this.FormBorderStyle = FormBorderStyle.None;
-            this.WindowState = FormWindowState.Maximized;
-            this.DoubleBuffered = true;
+            FormBorderStyle = FormBorderStyle.None;
+            WindowState = FormWindowState.Maximized;
+            DoubleBuffered = true;
 
-            CreateUI();
-            LayoutUI();
+            CreateControls();
+            MusicManager.Play("tribal.mp3", musicVolume);
 
-            this.Resize += (s, e) => LayoutUI();
+            UpdateLayout();
+
+            Resize += (s, e) => UpdateLayout();
         }
 
-        private void CreateUI()
+        private void CreateControls()
         {
-            title = new Label();
-            title.Text = "BlockAdventures";
-            title.AutoSize = true;
-            title.Font = Theme.MainTitleFont;
-            StyleHelper.ApplyTitleStyle(title);
+            titleLabel = new Label();
+            titleLabel.Text = "BlockAdventures";
+            titleLabel.AutoSize = true;
+            titleLabel.Font = new Font("Georgia", 42, FontStyle.Bold);
+            StyleHelper.ApplyTitleStyle(titleLabel);
 
-            btnStart = CreateMenuButton("Начать игру");
-            btnOptions = CreateMenuButton("Опции");
-            btnExit = CreateMenuButton("Выход");
+            startButton = CreateMenuButton("Начать игру");
+            optionsButton = CreateMenuButton("Опции");
+            exitButton = CreateMenuButton("Выход");
 
-            btnStart.Click += (s, e) =>
+            startButton.Click += StartButton_Click;
+            optionsButton.Click += OptionsButton_Click;
+            exitButton.Click += (s, e) =>
             {
-                PlayForm playForm = new PlayForm(this, musicVolume);
-                playForm.BackgroundImage = this.BackgroundImage;
-                playForm.BackgroundImageLayout = this.BackgroundImageLayout;
-                playForm.Show();
-                this.Hide();
+                MusicManager.Stop();
+                Close();
             };
 
-            btnOptions.Click += (s, e) =>
-            {
-                OptionsForm optionsForm = new OptionsForm(this, musicVolume);
-                optionsForm.BackgroundImage = this.BackgroundImage;
-                optionsForm.BackgroundImageLayout = this.BackgroundImageLayout;
-
-                optionsForm.FormClosed += (sender, args) =>
-                {
-                    musicVolume = optionsForm.MusicVolume;
-                };
-
-                optionsForm.Show();
-                this.Hide();
-            };
-
-            btnExit.Click += (s, e) =>
-            {
-                this.Close();
-            };
-
-            this.Controls.Add(title);
-            this.Controls.Add(btnStart);
-            this.Controls.Add(btnOptions);
-            this.Controls.Add(btnExit);
+            Controls.Add(titleLabel);
+            Controls.Add(startButton);
+            Controls.Add(optionsButton);
+            Controls.Add(exitButton);
         }
 
         private Button CreateMenuButton(string text)
         {
-            Button button = new Button();
+            var button = new Button();
             button.Text = text;
             button.Size = new Size(390, 88);
-
+            button.Font = new Font("Georgia", 18, FontStyle.Bold);
             StyleHelper.ApplyMenuButtonStyle(button);
-
+            button.TabStop = false;
             return button;
         }
 
-        private void LayoutUI()
+        private void StartButton_Click(object sender, EventArgs e)
         {
-            int centerX = this.ClientSize.Width / 2;
-            int centerY = this.ClientSize.Height / 2;
+            var playForm = new PlayForm(this, musicVolume);
+            playForm.BackgroundImage = BackgroundImage;
+            playForm.BackgroundImageLayout = BackgroundImageLayout;
+            playForm.Show();
+            Hide();
+        }
 
-            int buttonHeight = btnStart.Height;
+        private void OptionsButton_Click(object sender, EventArgs e)
+        {
+            var optionsForm = new OptionsForm(this, musicVolume);
+            optionsForm.BackgroundImage = BackgroundImage;
+            optionsForm.BackgroundImageLayout = BackgroundImageLayout;
 
-            int titleY = this.ClientSize.Height / 8;
-            int startY = centerY - 70 - buttonHeight;
-            int gap = 40;
-            int exitY = this.ClientSize.Height - 180 - buttonHeight;
+            optionsForm.FormClosed += (s, args) =>
+            {
+                musicVolume = optionsForm.MusicVolume;
+                Show();
+            };
 
-            title.Location = new Point(centerX - title.Width / 2, titleY);
-            btnStart.Location = new Point(centerX - btnStart.Width / 2, startY);
-            btnOptions.Location = new Point(centerX - btnOptions.Width / 2, btnStart.Bottom + gap);
-            btnExit.Location = new Point(centerX - btnExit.Width / 2, exitY);
+            optionsForm.Show();
+            Hide();
+        }
+
+        private void UpdateLayout()
+        {
+            var centerX = ClientSize.Width / 2;
+            var centerY = ClientSize.Height / 2;
+
+            var titleY = ClientSize.Height / 10;
+            var gap = 35;
+
+            titleLabel.Location = new Point(
+                centerX - titleLabel.Width / 2,
+                titleY
+            );
+
+            startButton.Location = new Point(
+                centerX - startButton.Width / 2,
+                centerY - 120
+            );
+
+            optionsButton.Location = new Point(
+                centerX - optionsButton.Width / 2,
+                startButton.Bottom + gap
+            );
+
+            exitButton.Location = new Point(
+                centerX - exitButton.Width / 2,
+                optionsButton.Bottom + gap
+            );
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Escape)
             {
-                this.Close();
+                MusicManager.Stop();
+                Close();
                 return true;
             }
 

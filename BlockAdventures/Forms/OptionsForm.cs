@@ -1,4 +1,6 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using BlockAdventures.Styles;
 
@@ -6,39 +8,37 @@ namespace BlockAdventures
 {
     public partial class OptionsForm : Form
     {
-        private Form previousForm;
-
         private Label titleLabel;
+        private Panel volumePanel;
         private Label volumeLabel;
         private Label volumeValueLabel;
+        private Label volumeLeftLabel;
+        private Label volumeRightLabel;
+        private VolumeSlider volumeSlider;
         private Button backButton;
 
-        private Panel sliderBack;
-        private Panel sliderFill;
-        private Panel sliderThumb;
-
-        private bool isDragging;
-        private int musicVolume = 50;
+        private Form menuForm;
 
         public int MusicVolume
         {
-            get { return musicVolume; }
+            get { return volumeSlider.Value; }
         }
 
-        public OptionsForm(Form previous, int currentVolume)
+        public OptionsForm(Form menu, int currentVolume)
         {
             InitializeComponent();
 
-            previousForm = previous;
-            musicVolume = currentVolume;
+            menuForm = menu;
 
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
             DoubleBuffered = true;
 
             CreateControls();
+
+            volumeSlider.Value = currentVolume;
+            UpdateVolumeText();
             UpdateLayout();
-            SetVolume(musicVolume);
 
             Resize += (s, e) => UpdateLayout();
         }
@@ -48,146 +48,327 @@ namespace BlockAdventures
             titleLabel = new Label();
             titleLabel.Text = "Опции";
             titleLabel.AutoSize = true;
-            titleLabel.Font = new Font("Georgia", 36, FontStyle.Bold);
+            titleLabel.Font = new Font("Georgia", 34, FontStyle.Bold);
             StyleHelper.ApplyTitleStyle(titleLabel);
+
+            volumePanel = new Panel();
+            volumePanel.Size = new Size(520, 180);
+            volumePanel.BackColor = Color.FromArgb(118, 105, 74);
+            volumePanel.BorderStyle = BorderStyle.FixedSingle;
+            volumePanel.Paint += VolumePanel_Paint;
 
             volumeLabel = new Label();
             volumeLabel.Text = "Громкость музыки";
             volumeLabel.AutoSize = true;
-            volumeLabel.Font = new Font("Georgia", 22, FontStyle.Bold);
-            StyleHelper.ApplyTextStyle(volumeLabel);
+            volumeLabel.Font = new Font("Georgia", 18, FontStyle.Bold);
+            volumeLabel.ForeColor = Theme.TextColor;
+            volumeLabel.BackColor = volumePanel.BackColor;
 
             volumeValueLabel = new Label();
-            volumeValueLabel.Text = "50%";
             volumeValueLabel.AutoSize = true;
             volumeValueLabel.Font = new Font("Georgia", 18, FontStyle.Bold);
             volumeValueLabel.ForeColor = Theme.TitleColor;
-            volumeValueLabel.BackColor = Color.Transparent;
+            volumeValueLabel.BackColor = volumePanel.BackColor;
 
-            sliderBack = new Panel();
-            sliderBack.Size = new Size(420, 24);
-            sliderBack.BackColor = Color.FromArgb(82, 73, 52);
-            sliderBack.BorderStyle = BorderStyle.FixedSingle;
-            sliderBack.MouseDown += SliderBack_MouseDown;
+            volumeSlider = new VolumeSlider();
+            volumeSlider.Size = new Size(400, 50);
+            volumeSlider.ValueChanged += (s, e) =>
+            {
+                UpdateVolumeText();
+                MusicManager.SetVolume(volumeSlider.Value);
+            };
 
-            sliderFill = new Panel();
-            sliderFill.Height = 24;
-            sliderFill.BackColor = Color.FromArgb(106, 140, 72);
-            sliderBack.Controls.Add(sliderFill);
+            volumeLeftLabel = new Label();
+            volumeLeftLabel.Text = "Тише";
+            volumeLeftLabel.AutoSize = true;
+            volumeLeftLabel.Font = new Font("Georgia", 11, FontStyle.Bold);
+            volumeLeftLabel.ForeColor = Color.FromArgb(220, 210, 180);
+            volumeLeftLabel.BackColor = volumePanel.BackColor;
 
-            sliderThumb = new Panel();
-            sliderThumb.Size = new Size(28, 28);
-            sliderThumb.BackColor = Color.FromArgb(176, 157, 97);
-            sliderThumb.Cursor = Cursors.Hand;
-            sliderThumb.Paint += SliderThumb_Paint;
-            sliderThumb.MouseDown += (s, e) => isDragging = true;
-            sliderThumb.MouseMove += SliderThumb_MouseMove;
-            sliderThumb.MouseUp += (s, e) => isDragging = false;
+            volumeRightLabel = new Label();
+            volumeRightLabel.Text = "Громче";
+            volumeRightLabel.AutoSize = true;
+            volumeRightLabel.Font = new Font("Georgia", 11, FontStyle.Bold);
+            volumeRightLabel.ForeColor = Color.FromArgb(220, 210, 180);
+            volumeRightLabel.BackColor = volumePanel.BackColor;
 
             backButton = new Button();
-            backButton.Text = "Назад";
-            backButton.Size = new Size(250, 70);
+            backButton.Text = "В главное меню";
+            backButton.Size = new Size(320, 80);
+            backButton.Font = new Font("Georgia", 16, FontStyle.Bold);
             StyleHelper.ApplyMenuButtonStyle(backButton);
+
             backButton.Click += (s, e) =>
             {
-                previousForm.Show();
+                menuForm.Show();
                 Close();
             };
 
+            volumePanel.Controls.Add(volumeLabel);
+            volumePanel.Controls.Add(volumeValueLabel);
+            volumePanel.Controls.Add(volumeSlider);
+            volumePanel.Controls.Add(volumeLeftLabel);
+            volumePanel.Controls.Add(volumeRightLabel);
+
             Controls.Add(titleLabel);
-            Controls.Add(volumeLabel);
-            Controls.Add(volumeValueLabel);
-            Controls.Add(sliderBack);
-            Controls.Add(sliderThumb);
+            Controls.Add(volumePanel);
             Controls.Add(backButton);
+        }
+
+        private void VolumePanel_Paint(object sender, PaintEventArgs e)
+        {
+            using (var pen = new Pen(Color.FromArgb(150, 135, 95), 2))
+            {
+                var rect = new Rectangle(6, 6, volumePanel.Width - 13, volumePanel.Height - 13);
+                e.Graphics.DrawRectangle(pen, rect);
+            }
+        }
+
+        private void UpdateVolumeText()
+        {
+            volumeValueLabel.Text = volumeSlider.Value + "%";
+
+            if (volumePanel != null)
+            {
+                volumeValueLabel.Location = new Point(
+                    volumePanel.Width - volumeValueLabel.Width - 28,
+                    24
+                );
+            }
         }
 
         private void UpdateLayout()
         {
             var centerX = ClientSize.Width / 2;
 
-            titleLabel.Location = new Point(centerX - titleLabel.Width / 2, 110);
-            volumeLabel.Location = new Point(centerX - volumeLabel.Width / 2, 250);
-            volumeValueLabel.Location = new Point(centerX - volumeValueLabel.Width / 2, 305);
-            sliderBack.Location = new Point(centerX - sliderBack.Width / 2, 370);
-            backButton.Location = new Point(centerX - backButton.Width / 2, 500);
-
-            UpdateSliderView();
-        }
-
-        private void SetVolume(int value)
-        {
-            if (value < 0) value = 0;
-            if (value > 100) value = 100;
-
-            musicVolume = value;
-            volumeValueLabel.Text = musicVolume + "%";
-            UpdateSliderView();
-        }
-
-        private void UpdateSliderView()
-        {
-            var fillWidth = sliderBack.Width * musicVolume / 100;
-            sliderFill.Width = fillWidth;
-
-            var thumbX = sliderBack.Left + fillWidth - sliderThumb.Width / 2;
-            var minX = sliderBack.Left - sliderThumb.Width / 2;
-            var maxX = sliderBack.Right - sliderThumb.Width / 2;
-
-            if (thumbX < minX) thumbX = minX;
-            if (thumbX > maxX) thumbX = maxX;
-
-            sliderThumb.Location = new Point(
-                thumbX,
-                sliderBack.Top + sliderBack.Height / 2 - sliderThumb.Height / 2
+            titleLabel.Location = new Point(
+                centerX - titleLabel.Width / 2,
+                110
             );
 
-            volumeValueLabel.Left = ClientSize.Width / 2 - volumeValueLabel.Width / 2;
-        }
+            volumePanel.Location = new Point(
+                centerX - volumePanel.Width / 2,
+                255
+            );
 
-        private void SliderBack_MouseDown(object sender, MouseEventArgs e)
-        {
-            var value = e.X * 100 / sliderBack.Width;
-            SetVolume(value);
-        }
+            volumeLabel.Location = new Point(28, 24);
 
-        private void SliderThumb_MouseMove(object sender, MouseEventArgs e)
-        {
-            if (!isDragging)
-                return;
+            volumeSlider.Location = new Point(60, 82);
 
-            var mouseX = PointToClient(Cursor.Position).X;
-            var xInsideSlider = mouseX - sliderBack.Left;
-            var value = xInsideSlider * 100 / sliderBack.Width;
+            volumeLeftLabel.Location = new Point(
+                volumeSlider.Left,
+                volumeSlider.Bottom + 10
+            );
 
-            SetVolume(value);
-        }
+            volumeRightLabel.Location = new Point(
+                volumeSlider.Right - volumeRightLabel.Width,
+                volumeSlider.Bottom + 10
+            );
 
-        private void SliderThumb_Paint(object sender, PaintEventArgs e)
-        {
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            backButton.Location = new Point(
+                centerX - backButton.Width / 2,
+                volumePanel.Bottom + 65
+            );
 
-            using (var brush = new SolidBrush(Color.FromArgb(176, 157, 97)))
-            {
-                e.Graphics.FillEllipse(brush, 0, 0, sliderThumb.Width - 1, sliderThumb.Height - 1);
-            }
-
-            using (var pen = new Pen(Color.FromArgb(110, 90, 50), 2))
-            {
-                e.Graphics.DrawEllipse(pen, 1, 1, sliderThumb.Width - 3, sliderThumb.Height - 3);
-            }
+            UpdateVolumeText();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if (keyData == Keys.Escape)
             {
-                previousForm.Show();
+                menuForm.Show();
                 Close();
                 return true;
             }
 
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private class VolumeSlider : Control
+        {
+            private int value = 50;
+            private bool isDragging;
+
+            public event EventHandler ValueChanged;
+
+            public int Value
+            {
+                get { return value; }
+                set
+                {
+                    var newValue = value;
+
+                    if (newValue < 0)
+                    {
+                        newValue = 0;
+                    }
+
+                    if (newValue > 100)
+                    {
+                        newValue = 100;
+                    }
+
+                    if (this.value == newValue)
+                    {
+                        return;
+                    }
+
+                    this.value = newValue;
+                    Invalidate();
+
+                    if (ValueChanged != null)
+                    {
+                        ValueChanged(this, EventArgs.Empty);
+                    }
+                }
+            }
+
+            public VolumeSlider()
+            {
+                SetStyle(
+                    ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.UserPaint |
+                    ControlStyles.OptimizedDoubleBuffer |
+                    ControlStyles.ResizeRedraw,
+                    true);
+
+                BackColor = Color.FromArgb(118, 105, 74);
+                Cursor = Cursors.Hand;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.Clear(BackColor);
+
+                var trackRect = new Rectangle(10, Height / 2 - 6, Width - 20, 12);
+                var fillWidth = (int)(trackRect.Width * (Value / 100f));
+                var fillRect = new Rectangle(trackRect.X, trackRect.Y, fillWidth, trackRect.Height);
+
+                using (var trackBrush = new SolidBrush(Color.FromArgb(92, 80, 54)))
+                using (var fillBrush = new SolidBrush(Color.FromArgb(190, 166, 88)))
+                using (var trackPen = new Pen(Color.FromArgb(70, 58, 38), 2))
+                using (var knobBrush = new SolidBrush(Color.FromArgb(225, 205, 130)))
+                using (var knobPen = new Pen(Color.FromArgb(95, 78, 45), 2))
+                {
+                    FillRoundedRect(e.Graphics, trackBrush, trackRect, 6);
+
+                    if (fillRect.Width > 0)
+                    {
+                        FillRoundedRect(e.Graphics, fillBrush, fillRect, 6);
+                    }
+
+                    DrawRoundedRect(e.Graphics, trackPen, trackRect, 6);
+
+                    var knobSize = 20;
+                    var knobX = trackRect.X + fillWidth - knobSize / 2;
+
+                    if (knobX < trackRect.X - knobSize / 2)
+                    {
+                        knobX = trackRect.X - knobSize / 2;
+                    }
+
+                    if (knobX > trackRect.Right - knobSize / 2)
+                    {
+                        knobX = trackRect.Right - knobSize / 2;
+                    }
+
+                    var knobRect = new Rectangle(
+                        knobX,
+                        Height / 2 - knobSize / 2,
+                        knobSize,
+                        knobSize
+                    );
+
+                    e.Graphics.FillEllipse(knobBrush, knobRect);
+                    e.Graphics.DrawEllipse(knobPen, knobRect);
+                }
+            }
+
+            protected override void OnMouseDown(MouseEventArgs e)
+            {
+                base.OnMouseDown(e);
+
+                if (e.Button != MouseButtons.Left)
+                {
+                    return;
+                }
+
+                isDragging = true;
+                UpdateValueFromMouse(e.X);
+            }
+
+            protected override void OnMouseMove(MouseEventArgs e)
+            {
+                base.OnMouseMove(e);
+
+                if (!isDragging)
+                {
+                    return;
+                }
+
+                UpdateValueFromMouse(e.X);
+            }
+
+            protected override void OnMouseUp(MouseEventArgs e)
+            {
+                base.OnMouseUp(e);
+                isDragging = false;
+            }
+
+            private void UpdateValueFromMouse(int mouseX)
+            {
+                var left = 10;
+                var width = Width - 20;
+
+                var x = mouseX;
+
+                if (x < left)
+                {
+                    x = left;
+                }
+
+                if (x > left + width)
+                {
+                    x = left + width;
+                }
+
+                var percent = (x - left) / (float)width;
+                Value = (int)Math.Round(percent * 100);
+            }
+
+            private void FillRoundedRect(Graphics graphics, Brush brush, Rectangle rect, int radius)
+            {
+                using (var path = CreateRoundedRect(rect, radius))
+                {
+                    graphics.FillPath(brush, path);
+                }
+            }
+
+            private void DrawRoundedRect(Graphics graphics, Pen pen, Rectangle rect, int radius)
+            {
+                using (var path = CreateRoundedRect(rect, radius))
+                {
+                    graphics.DrawPath(pen, path);
+                }
+            }
+
+            private GraphicsPath CreateRoundedRect(Rectangle rect, int radius)
+            {
+                var path = new GraphicsPath();
+                var size = radius * 2;
+
+                path.AddArc(rect.X, rect.Y, size, size, 180, 90);
+                path.AddArc(rect.Right - size, rect.Y, size, size, 270, 90);
+                path.AddArc(rect.Right - size, rect.Bottom - size, size, size, 0, 90);
+                path.AddArc(rect.X, rect.Bottom - size, size, size, 90, 90);
+                path.CloseFigure();
+
+                return path;
+            }
         }
     }
 }
