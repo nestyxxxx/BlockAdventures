@@ -1,11 +1,13 @@
-﻿using System;
+﻿using BlockAdventures.Controllers;
+using BlockAdventures.GameLogic;
+using BlockAdventures.Models;
+using BlockAdventures.Styles;
+using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
-using BlockAdventures.GameLogic;
-using BlockAdventures.Models;
-using BlockAdventures.Styles;
 
 namespace BlockAdventures
 {
@@ -30,13 +32,22 @@ namespace BlockAdventures
         private Panel bonusPanel;
         private Label bonusTitle;
 
+        private Panel leaderboardPanel;
+        private Label leaderboardTitle;
+        private Label leaderboardPlaceHeader;
+        private Label leaderboardNameHeader;
+        private Label leaderboardScoreHeader;
+
+        private List<Label> leaderboardPlaceLabels = new List<Label>();
+        private List<Label> leaderboardNameLabels = new List<Label>();
+        private List<Label> leaderboardScoreLabels = new List<Label>();
+
         private PictureBox archaeologistPicture;
 
         private Button settingsButton;
         private ContextMenuStrip settingsMenu;
 
         private int musicVolume = 50;
-        private int score = 0;
         private int scoreBarMax = 300;
 
         private int fieldCols = 10;
@@ -44,11 +55,7 @@ namespace BlockAdventures
         private int cellSize = 68;
         private int fieldOffsetX = 90;
 
-        private FieldManager fieldManager;
-        private BonusManager bonusManager;
-
-        private FigureModel currentFigure;
-        private TaskModel currentTask;
+        private PlayController controller;
 
         private bool isDraggingFigure;
         private Point mousePointOnForm;
@@ -70,12 +77,7 @@ namespace BlockAdventures
 
             menuForm = menu;
             musicVolume = currentVolume;
-
-            fieldManager = new FieldManager(fieldCols, fieldRows);
-            bonusManager = new BonusManager();
-
-            currentFigure = FigureGenerator.Generate();
-            currentTask = TaskGenerator.Generate();
+            controller = new PlayController(fieldCols, fieldRows);
 
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
@@ -84,6 +86,7 @@ namespace BlockAdventures
             CreateControls();
             CreateDragSystem();
 
+            UpdateLeaderboardPanel();
             UpdateLayout();
             UpdateTaskPanel();
             UpdateScoreView();
@@ -178,8 +181,10 @@ namespace BlockAdventures
             bonusTitle = CreatePanelTitle("Бонусы", 22);
             bonusPanel.Controls.Add(bonusTitle);
 
+            CreateLeaderboardPanel();
+
             archaeologistPicture = new PictureBox();
-            archaeologistPicture.Size = new Size(380, 520);
+            archaeologistPicture.Size = new Size(220, 320);
             archaeologistPicture.SizeMode = PictureBoxSizeMode.Zoom;
             archaeologistPicture.BackColor = Color.Transparent;
             archaeologistPicture.Enabled = false;
@@ -194,17 +199,13 @@ namespace BlockAdventures
             settingsMenu.Font = new Font("Georgia", 12, FontStyle.Bold);
             settingsMenu.Renderer = new ToolStripProfessionalRenderer(new JungleMenuColorTable());
 
-            var mainMenuItem = new ToolStripMenuItem("В главное меню");
             var optionsItem = new ToolStripMenuItem("Опции");
+            var restartItem = new ToolStripMenuItem("Начать игру заново");
+            var mainMenuItem = new ToolStripMenuItem("В главное меню");
 
-            StyleMenuItem(mainMenuItem);
             StyleMenuItem(optionsItem);
-
-            mainMenuItem.Click += (s, e) =>
-            {
-                menuForm.Show();
-                Close();
-            };
+            StyleMenuItem(restartItem);
+            StyleMenuItem(mainMenuItem);
 
             optionsItem.Click += (s, e) =>
             {
@@ -222,8 +223,17 @@ namespace BlockAdventures
                 Hide();
             };
 
-            settingsMenu.Items.Add(mainMenuItem);
+            restartItem.Click += (s, e) => RestartGame();
+
+            mainMenuItem.Click += (s, e) =>
+            {
+                menuForm.Show();
+                Close();
+            };
+
             settingsMenu.Items.Add(optionsItem);
+            settingsMenu.Items.Add(restartItem);
+            settingsMenu.Items.Add(mainMenuItem);
 
             settingsButton.Click += (s, e) =>
             {
@@ -239,6 +249,147 @@ namespace BlockAdventures
             Controls.Add(settingsButton);
         }
 
+        private void CreateLeaderboardPanel()
+        {
+            leaderboardPanel = new Panel();
+            leaderboardPanel.Size = new Size(390, 430);
+            leaderboardPanel.BackColor = Color.FromArgb(85, 72, 46);
+            leaderboardPanel.Paint += LeaderboardPanel_Paint;
+
+            leaderboardTitle = new Label();
+            leaderboardTitle.Text = "Топ";
+            leaderboardTitle.Size = new Size(leaderboardPanel.Width, 46);
+            leaderboardTitle.Location = new Point(0, 10);
+            leaderboardTitle.TextAlign = ContentAlignment.MiddleCenter;
+            leaderboardTitle.Font = new Font("Georgia", 22, FontStyle.Bold);
+            leaderboardTitle.ForeColor = Theme.TitleColor;
+            leaderboardTitle.BackColor = Color.Transparent;
+
+            leaderboardPlaceHeader = new Label();
+            leaderboardPlaceHeader.Text = "№";
+            leaderboardPlaceHeader.Size = new Size(50, 30);
+            leaderboardPlaceHeader.Location = new Point(0, 64);
+            leaderboardPlaceHeader.TextAlign = ContentAlignment.MiddleCenter;
+            leaderboardPlaceHeader.Font = new Font("Georgia", 13, FontStyle.Bold);
+            leaderboardPlaceHeader.ForeColor = Theme.TextColor;
+            leaderboardPlaceHeader.BackColor = Color.Transparent;
+
+            leaderboardNameHeader = new Label();
+            leaderboardNameHeader.Text = "Игрок";
+            leaderboardNameHeader.Size = new Size(220, 30);
+            leaderboardNameHeader.Location = new Point(50, 64);
+            leaderboardNameHeader.TextAlign = ContentAlignment.MiddleCenter;
+            leaderboardNameHeader.Font = new Font("Georgia", 13, FontStyle.Bold);
+            leaderboardNameHeader.ForeColor = Theme.TextColor;
+            leaderboardNameHeader.BackColor = Color.Transparent;
+
+            leaderboardScoreHeader = new Label();
+            leaderboardScoreHeader.Text = "Баллы";
+            leaderboardScoreHeader.Size = new Size(120, 30);
+            leaderboardScoreHeader.Location = new Point(270, 64);
+            leaderboardScoreHeader.TextAlign = ContentAlignment.MiddleCenter;
+            leaderboardScoreHeader.Font = new Font("Georgia", 13, FontStyle.Bold);
+            leaderboardScoreHeader.ForeColor = Theme.TextColor;
+            leaderboardScoreHeader.BackColor = Color.Transparent;
+
+            leaderboardPanel.Controls.Add(leaderboardTitle);
+            leaderboardPanel.Controls.Add(leaderboardPlaceHeader);
+            leaderboardPanel.Controls.Add(leaderboardNameHeader);
+            leaderboardPanel.Controls.Add(leaderboardScoreHeader);
+
+            for (var i = 0; i < 10; i++)
+            {
+                var rowTop = 98 + i * 32;
+
+                var placeLabel = new Label();
+                placeLabel.Size = new Size(50, 30);
+                placeLabel.Location = new Point(0, rowTop);
+                placeLabel.TextAlign = ContentAlignment.MiddleCenter;
+                placeLabel.Font = new Font("Georgia", 12, FontStyle.Bold);
+                placeLabel.ForeColor = Theme.TitleColor;
+                placeLabel.BackColor = Color.Transparent;
+                placeLabel.Text = (i + 1).ToString();
+
+                var nameLabel = new Label();
+                nameLabel.Size = new Size(220, 30);
+                nameLabel.Location = new Point(50, rowTop);
+                nameLabel.TextAlign = ContentAlignment.MiddleLeft;
+                nameLabel.Font = new Font("Georgia", 12, FontStyle.Bold);
+                nameLabel.ForeColor = Theme.TextColor;
+                nameLabel.BackColor = Color.Transparent;
+                nameLabel.Text = "---";
+
+                var scoreLabel = new Label();
+                scoreLabel.Size = new Size(120, 30);
+                scoreLabel.Location = new Point(270, rowTop);
+                scoreLabel.TextAlign = ContentAlignment.MiddleCenter;
+                scoreLabel.Font = new Font("Georgia", 12, FontStyle.Bold);
+                scoreLabel.ForeColor = Theme.TextColor;
+                scoreLabel.BackColor = Color.Transparent;
+                scoreLabel.Text = "---";
+
+                leaderboardPlaceLabels.Add(placeLabel);
+                leaderboardNameLabels.Add(nameLabel);
+                leaderboardScoreLabels.Add(scoreLabel);
+
+                leaderboardPanel.Controls.Add(placeLabel);
+                leaderboardPanel.Controls.Add(nameLabel);
+                leaderboardPanel.Controls.Add(scoreLabel);
+            }
+
+            Controls.Add(leaderboardPanel);
+        }
+
+        private void LeaderboardPanel_Paint(object sender, PaintEventArgs e)
+        {
+            using (var outerPen = new Pen(Theme.TitleColor, 2))
+            using (var linePen = new Pen(Color.FromArgb(190, 70, 40), 2))
+            {
+                e.Graphics.DrawRectangle(
+                    outerPen,
+                    1,
+                    1,
+                    leaderboardPanel.Width - 3,
+                    leaderboardPanel.Height - 3
+                );
+
+                e.Graphics.DrawLine(linePen, 0, 58, leaderboardPanel.Width, 58);
+                e.Graphics.DrawLine(linePen, 0, 94, leaderboardPanel.Width, 94);
+
+                e.Graphics.DrawLine(linePen, 50, 58, 50, leaderboardPanel.Height);
+                e.Graphics.DrawLine(linePen, 270, 58, 270, leaderboardPanel.Height);
+
+                for (var i = 0; i < 10; i++)
+                {
+                    var y = 98 + i * 32;
+                    e.Graphics.DrawLine(linePen, 0, y, leaderboardPanel.Width, y);
+                }
+            }
+        }
+
+        private void UpdateLeaderboardPanel()
+        {
+            var scores = LeaderboardManager.LoadScores();
+
+            for (var i = 0; i < 10; i++)
+            {
+                leaderboardPlaceLabels[i].Text = (i + 1).ToString();
+
+                if (i < scores.Count)
+                {
+                    leaderboardNameLabels[i].Text = scores[i].Name;
+                    leaderboardScoreLabels[i].Text = scores[i].Score.ToString();
+                }
+                else
+                {
+                    leaderboardNameLabels[i].Text = "---";
+                    leaderboardScoreLabels[i].Text = "---";
+                }
+            }
+
+            leaderboardPanel.Invalidate();
+        }
+
         private void StyleMenuItem(ToolStripMenuItem item)
         {
             item.BackColor = Color.FromArgb(86, 72, 46);
@@ -249,7 +400,7 @@ namespace BlockAdventures
         {
             try
             {
-                var path = Path.Combine(Application.StartupPath, @"..\..\Resources\archaeologist.png");
+                var path = Path.Combine(Application.StartupPath, @"..\\..\\Resources\\archaeologist.png");
                 path = Path.GetFullPath(path);
 
                 if (File.Exists(path))
@@ -312,10 +463,24 @@ namespace BlockAdventures
 
             settingsButton.Location = new Point(ClientSize.Width - settingsButton.Width - 40, 30);
 
-            archaeologistPicture.Location = new Point(
-                fieldLeft - archaeologistPicture.Width - 30,
-                fieldTop - 145
+            leaderboardPanel.Location = new Point(
+                Math.Max(30, fieldLeft - leaderboardPanel.Width - 60),
+                fieldTop - 10
             );
+
+            var archaeologistX = fieldLeft - archaeologistPicture.Width - 20;
+            if (archaeologistX > leaderboardPanel.Right + 10)
+            {
+                archaeologistPicture.Visible = true;
+                archaeologistPicture.Location = new Point(
+                    archaeologistX,
+                    leaderboardPanel.Top + 20
+                );
+            }
+            else
+            {
+                archaeologistPicture.Visible = false;
+            }
 
             blocksPanel.Location = new Point(fieldLeft + fieldWidth + 55, fieldTop - 10);
             blocksTitle.Location = new Point(blocksPanel.Width / 2 - blocksTitle.Width / 2, 14);
@@ -329,26 +494,27 @@ namespace BlockAdventures
             changeTaskButton.Location = new Point(taskPanel.Width - 70, taskPanel.Height - 48);
 
             bonusPanel.Location = new Point(
-                fieldLeft - bonusPanel.Width - 30,
-                fieldTop + fieldHeight - 170
+                leaderboardPanel.Left + leaderboardPanel.Width / 2 - bonusPanel.Width / 2,
+                leaderboardPanel.Bottom + 25
             );
             bonusTitle.Location = new Point(bonusPanel.Width / 2 - bonusTitle.Width / 2, 12);
 
             scoreBar.Invalidate();
             bonusPanel.Invalidate();
+            leaderboardPanel.Invalidate();
         }
 
         private void UpdateTaskPanel()
         {
-            taskText.Text = currentTask.Text;
-            taskChangeCostLabel.Text = GetTaskChangeCost().ToString();
+            taskText.Text = controller.CurrentTask.Text;
+            taskChangeCostLabel.Text = controller.GetTaskChangeCost().ToString();
             UpdateCosts();
         }
 
         private void UpdateCosts()
         {
-            figureChangeCostLabel.Text = GetFigureChangeCost().ToString();
-            taskChangeCostLabel.Text = GetTaskChangeCost().ToString();
+            figureChangeCostLabel.Text = controller.GetFigureChangeCost().ToString();
+            taskChangeCostLabel.Text = controller.GetTaskChangeCost().ToString();
         }
 
         private void UpdateScoreView()
@@ -359,7 +525,7 @@ namespace BlockAdventures
 
         private void ScoreBar_Paint(object sender, PaintEventArgs e)
         {
-            var fillWidth = score * scoreBar.Width / scoreBarMax;
+            var fillWidth = controller.Score * scoreBar.Width / scoreBarMax;
 
             if (fillWidth < 0)
             {
@@ -376,7 +542,7 @@ namespace BlockAdventures
                 e.Graphics.FillRectangle(fillBrush, 0, 0, fillWidth, scoreBar.Height);
             }
 
-            var text = score.ToString();
+            var text = controller.Score.ToString();
             var font = Theme.ScoreFont;
 
             var textSize = TextRenderer.MeasureText(text, font);
@@ -392,55 +558,16 @@ namespace BlockAdventures
             );
         }
 
-        private int GetFigureChangeCost()
-        {
-            if (score <= 0)
-            {
-                return 0;
-            }
-
-            return (int)Math.Ceiling(score * 0.10);
-        }
-
-        private int GetTaskChangeCost()
-        {
-            if (score <= 0)
-            {
-                return 0;
-            }
-
-            return (int)Math.Ceiling(score * 0.20);
-        }
-
-        private void AddScore(int points)
-        {
-            score += points;
-            UpdateScoreView();
-        }
-
-        private bool TrySpendScore(int points)
-        {
-            if (score < points)
-            {
-                return false;
-            }
-
-            score -= points;
-            UpdateScoreView();
-            return true;
-        }
-
         private void ChangeFigure()
         {
-            var changeCost = GetFigureChangeCost();
-
-            if (!TrySpendScore(changeCost))
+            if (!controller.ChangeFigure())
             {
                 MessageBox.Show("Недостаточно очков");
                 return;
             }
 
-            currentFigure = FigureGenerator.Generate();
+            UpdateTaskPanel();
+            UpdateScoreView();
             blocksPanel.Invalidate();
             Invalidate();
 
@@ -449,17 +576,33 @@ namespace BlockAdventures
 
         private void ChangeTask()
         {
-            var changeCost = GetTaskChangeCost();
-
-            if (!TrySpendScore(changeCost))
+            if (!controller.ChangeTask())
             {
                 MessageBox.Show("Недостаточно очков");
                 return;
             }
 
-            currentTask = TaskGenerator.Generate();
             UpdateTaskPanel();
+            UpdateScoreView();
             Invalidate();
+        }
+
+        private void RestartGame()
+        {
+            using (var confirmForm = new RestartConfirmForm())
+            {
+                if (confirmForm.ShowDialog(this) != DialogResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            var newPlayForm = new PlayForm(menuForm, musicVolume);
+            newPlayForm.BackgroundImage = BackgroundImage;
+            newPlayForm.BackgroundImageLayout = BackgroundImageLayout;
+            newPlayForm.Show();
+
+            Close();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -484,9 +627,12 @@ namespace BlockAdventures
                         var cellTop = fieldTop + row * cellSize;
                         var cellRect = new Rectangle(cellLeft, cellTop, cellSize, cellSize);
 
-                        var color = fieldManager.GetCellColor(col, row, Theme.FieldCellColor);
+                        var modelColor = controller.Cells[col, row];
+                        var viewColor = modelColor.HasValue
+                            ? GetUiColor(modelColor.Value)
+                            : Theme.FieldCellColor;
 
-                        using (var cellBrush = new SolidBrush(color))
+                        using (var cellBrush = new SolidBrush(viewColor))
                         {
                             graphics.FillRectangle(cellBrush, cellRect);
                         }
@@ -512,7 +658,7 @@ namespace BlockAdventures
 
         private void DrawFigurePreview(Graphics graphics)
         {
-            if (currentFigure == null)
+            if (controller.CurrentFigure == null)
             {
                 return;
             }
@@ -526,14 +672,14 @@ namespace BlockAdventures
             var previewLeft = 85;
             var previewTop = 72;
 
-            using (var brush = new SolidBrush(currentFigure.Color))
+            using (var brush = new SolidBrush(GetUiColor(controller.CurrentFigure.Color)))
             using (var pen = new Pen(Color.FromArgb(70, 55, 25), 2))
             {
                 for (var row = 0; row < 3; row++)
                 {
                     for (var col = 0; col < 3; col++)
                     {
-                        if (!currentFigure.Cells[col, row])
+                        if (!controller.CurrentFigure.Cells[col, row])
                         {
                             continue;
                         }
@@ -570,7 +716,7 @@ namespace BlockAdventures
             {
                 for (var col = 0; col < 3; col++)
                 {
-                    if (!currentFigure.Cells[col, row])
+                    if (!controller.CurrentFigure.Cells[col, row])
                     {
                         continue;
                     }
@@ -619,7 +765,7 @@ namespace BlockAdventures
                 clickedCellY * cellSize + insideCellY * cellSize / previewCellSize
             );
 
-            dragGhost.SetFigure(currentFigure, cellSize);
+            dragGhost.SetFigure(controller.CurrentFigure, cellSize);
             dragGhost.Visible = true;
             dragGhost.BringToFront();
 
@@ -717,35 +863,18 @@ namespace BlockAdventures
                 return;
             }
 
-            canPlaceFigureHere = fieldManager.CanPutFigure(currentFigure, previewStartX, previewStartY);
+            canPlaceFigureHere = controller.CanPlaceCurrentFigure(previewStartX, previewStartY);
         }
 
         private void PutFigureOnField(int startCol, int startRow)
         {
-            fieldManager.PutFigure(currentFigure, startCol, startRow);
-
-            var taskIsDone = TaskChecker.CheckTask(
-                currentTask,
-                fieldManager.Cells,
-                fieldCols,
-                fieldRows
-            );
-
-            if (taskIsDone)
+            if (!controller.PlaceCurrentFigure(startCol, startRow))
             {
-                AddScore(currentTask.Reward);
-                bonusManager.AddProgress(currentTask.BonusColor, 25);
-
-                currentTask = TaskGenerator.Generate();
-                UpdateTaskPanel();
-
-                bonusPanel.Invalidate();
+                return;
             }
 
-            fieldManager.ClearFilledRows();
-            fieldManager.ClearFilledColumns();
-
-            currentFigure = FigureGenerator.Generate();
+            UpdateTaskPanel();
+            UpdateScoreView();
 
             blocksPanel.Invalidate();
             bonusPanel.Invalidate();
@@ -756,29 +885,40 @@ namespace BlockAdventures
 
         private void CheckGameOver()
         {
-            if (fieldManager.HasAnyPlaceForFigure(currentFigure))
+            if (controller.HasAnyPlaceForCurrentFigure())
             {
                 return;
             }
 
-            MessageBox.Show("Больше нет места для фигуры. Игра окончена.");
+            FinishGame();
+        }
+
+        private void FinishGame()
+        {
+            var isHighScore = LeaderboardManager.IsHighScore(controller.Score);
+
+            using (var gameOverForm = new GameOverForm(controller.Score, isHighScore))
+            {
+                gameOverForm.ShowDialog(this);
+
+                if (gameOverForm.ScoreWasSaved)
+                {
+                    UpdateLeaderboardPanel();
+                }
+            }
+
             menuForm.Show();
             Close();
         }
 
         private void BonusPanel_MouseClick(object sender, MouseEventArgs e)
         {
-            var clickedColor = bonusManager.GetClickedBonusColor(e.Location, bonusPanel.Width, bonusPanel.Height);
+            var clickedColor = GetClickedBonusColor(e.Location, bonusPanel.Width);
 
-            if (!bonusManager.IsReady(clickedColor))
+            if (!controller.UseBonus(clickedColor))
             {
                 return;
             }
-
-            var color = TaskChecker.GetColorByBonus(clickedColor);
-
-            fieldManager.ClearColor(color);
-            bonusManager.Reset(clickedColor);
 
             bonusPanel.Invalidate();
             Invalidate();
@@ -786,7 +926,219 @@ namespace BlockAdventures
 
         private void BonusPanel_Paint(object sender, PaintEventArgs e)
         {
-            bonusManager.Draw(e.Graphics, bonusPanel.Width, bonusPanel.Height);
+            DrawBonusPanel(e.Graphics, bonusPanel.Width);
+        }
+
+        private BonusColor GetClickedBonusColor(Point point, int panelWidth)
+        {
+            var centerX = panelWidth / 2;
+            var topY = 72;
+            var size = 105;
+
+            var top = new Point(centerX, topY);
+            var left = new Point(centerX - size / 2, topY + size / 2);
+            var right = new Point(centerX + size / 2, topY + size / 2);
+            var bottom = new Point(centerX, topY + size);
+            var center = new Point(centerX, topY + size / 2);
+
+            if (IsPointInsideTriangle(point, top, left, center))
+            {
+                return BonusColor.Red;
+            }
+
+            if (IsPointInsideTriangle(point, top, right, center))
+            {
+                return BonusColor.Yellow;
+            }
+
+            if (IsPointInsideTriangle(point, left, bottom, center))
+            {
+                return BonusColor.Green;
+            }
+
+            if (IsPointInsideTriangle(point, right, bottom, center))
+            {
+                return BonusColor.Blue;
+            }
+
+            return BonusColor.None;
+        }
+
+        private void DrawBonusPanel(Graphics graphics, int panelWidth)
+        {
+            var centerX = panelWidth / 2;
+            var topY = 72;
+            var size = 105;
+
+            var top = new Point(centerX, topY);
+            var left = new Point(centerX - size / 2, topY + size / 2);
+            var right = new Point(centerX + size / 2, topY + size / 2);
+            var bottom = new Point(centerX, topY + size);
+            var center = new Point(centerX, topY + size / 2);
+
+            DrawBonusPart(
+                graphics,
+                center,
+                top,
+                left,
+                BonusColor.Red,
+                controller.GetBonusProgress(BonusColor.Red),
+                controller.IsBonusReady(BonusColor.Red)
+            );
+
+            DrawBonusPart(
+                graphics,
+                center,
+                top,
+                right,
+                BonusColor.Yellow,
+                controller.GetBonusProgress(BonusColor.Yellow),
+                controller.IsBonusReady(BonusColor.Yellow)
+            );
+
+            DrawBonusPart(
+                graphics,
+                center,
+                left,
+                bottom,
+                BonusColor.Green,
+                controller.GetBonusProgress(BonusColor.Green),
+                controller.IsBonusReady(BonusColor.Green)
+            );
+
+            DrawBonusPart(
+                graphics,
+                center,
+                right,
+                bottom,
+                BonusColor.Blue,
+                controller.GetBonusProgress(BonusColor.Blue),
+                controller.IsBonusReady(BonusColor.Blue)
+            );
+
+            using (var pen = new Pen(Color.FromArgb(60, 50, 30), 3))
+            {
+                graphics.DrawPolygon(pen, new[] { top, left, bottom, right });
+                graphics.DrawLine(pen, top, bottom);
+                graphics.DrawLine(pen, left, right);
+            }
+
+            if (HasAnyReadyBonus())
+            {
+                DrawBonusReadyText(graphics, panelWidth);
+            }
+        }
+
+        private void DrawBonusPart(
+            Graphics graphics,
+            Point center,
+            Point p1,
+            Point p2,
+            BonusColor bonusColor,
+            int progress,
+            bool isReady)
+        {
+            if (progress <= 0)
+            {
+                return;
+            }
+
+            var k = progress / 100f;
+            var newP1 = GetScaledPoint(center, p1, k);
+            var newP2 = GetScaledPoint(center, p2, k);
+
+            using (var brush = new SolidBrush(GetUiColor(bonusColor)))
+            {
+                graphics.FillPolygon(brush, new[] { center, newP1, newP2 });
+            }
+
+            if (isReady)
+            {
+                using (var readyPen = new Pen(Color.FromArgb(255, 245, 225, 150), 5))
+                {
+                    graphics.DrawPolygon(readyPen, new[] { center, p1, p2 });
+                }
+            }
+        }
+
+        private void DrawBonusReadyText(Graphics graphics, int panelWidth)
+        {
+            var text = "Нажми на бонус";
+            using (var font = new Font("Georgia", 11, FontStyle.Bold))
+            {
+                var textSize = TextRenderer.MeasureText(text, font);
+
+                var x = panelWidth / 2 - textSize.Width / 2;
+                var y = bonusPanel.Height - 34;
+
+                using (var backBrush = new SolidBrush(Color.FromArgb(170, 70, 55, 30)))
+                using (var borderPen = new Pen(Color.FromArgb(230, 232, 206, 110), 1))
+                {
+                    graphics.FillRectangle(backBrush, x - 8, y - 2, textSize.Width + 16, textSize.Height + 4);
+                    graphics.DrawRectangle(borderPen, x - 8, y - 2, textSize.Width + 16, textSize.Height + 4);
+                }
+
+                TextRenderer.DrawText(
+                    graphics,
+                    text,
+                    font,
+                    new Point(x, y),
+                    Color.White
+                );
+            }
+        }
+
+        private bool HasAnyReadyBonus()
+        {
+            return controller.IsBonusReady(BonusColor.Red) ||
+                   controller.IsBonusReady(BonusColor.Green) ||
+                   controller.IsBonusReady(BonusColor.Yellow) ||
+                   controller.IsBonusReady(BonusColor.Blue);
+        }
+
+        private Point GetScaledPoint(Point center, Point target, float k)
+        {
+            var x = center.X + (int)((target.X - center.X) * k);
+            var y = center.Y + (int)((target.Y - center.Y) * k);
+
+            return new Point(x, y);
+        }
+
+        private bool IsPointInsideTriangle(Point p, Point p1, Point p2, Point p3)
+        {
+            var d1 = GetTriangleSign(p, p1, p2);
+            var d2 = GetTriangleSign(p, p2, p3);
+            var d3 = GetTriangleSign(p, p3, p1);
+
+            var hasNegative = d1 < 0 || d2 < 0 || d3 < 0;
+            var hasPositive = d1 > 0 || d2 > 0 || d3 > 0;
+
+            return !(hasNegative && hasPositive);
+        }
+
+        private float GetTriangleSign(Point p1, Point p2, Point p3)
+        {
+            return (p1.X - p3.X) * (p2.Y - p3.Y) - (p2.X - p3.X) * (p1.Y - p3.Y);
+        }
+
+        private static Color GetUiColor(BonusColor bonusColor)
+        {
+            if (bonusColor == BonusColor.Red)
+            {
+                return Color.FromArgb(196, 72, 56);
+            }
+
+            if (bonusColor == BonusColor.Green)
+            {
+                return Color.FromArgb(92, 176, 78);
+            }
+
+            if (bonusColor == BonusColor.Yellow)
+            {
+                return Color.FromArgb(222, 198, 68);
+            }
+
+            return Color.FromArgb(78, 180, 220);
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -809,10 +1161,12 @@ namespace BlockAdventures
 
             public FigureGhostControl()
             {
-                SetStyle(ControlStyles.AllPaintingInWmPaint |
-                         ControlStyles.UserPaint |
-                         ControlStyles.OptimizedDoubleBuffer |
-                         ControlStyles.ResizeRedraw, true);
+                SetStyle(
+                    ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.UserPaint |
+                    ControlStyles.OptimizedDoubleBuffer |
+                    ControlStyles.ResizeRedraw,
+                    true);
             }
 
             public void SetFigure(FigureModel figure, int cellSize)
@@ -869,7 +1223,7 @@ namespace BlockAdventures
                     return;
                 }
 
-                var drawColor = Figure.Color;
+                var drawColor = GetUiColor(Figure.Color);
 
                 if (!CanPlace)
                 {

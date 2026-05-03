@@ -66,12 +66,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Forms\GameOverForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Forms\OptionsForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\OptionsForm.Designer.cs">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\PlayController.cs" />
     <Compile Include="Forms\PlayForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -84,11 +88,17 @@
     <Compile Include="Forms\GameForm.Designer.cs">
       <DependentUpon>GameForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\RestartConfirmForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="GameLogic\BonusManager.cs" />
     <Compile Include="GameLogic\FieldManager.cs" />
+    <Compile Include="GameLogic\GameModel.cs" />
+    <Compile Include="GameLogic\LeaderboardManager.cs" />
     <Compile Include="GameLogic\TaskChecker.cs" />
     <Compile Include="Models\FigureGenerator.cs" />
     <Compile Include="Models\FigureModel.cs" />
+    <Compile Include="Models\PlayerScore.cs" />
     <Compile Include="Models\TaskGenerator.cs" />
     <Compile Include="Models\TaskModel.cs" />
     <Compile Include="MusicManager.cs" />

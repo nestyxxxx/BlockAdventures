@@ -5,7 +5,7 @@ namespace BlockAdventures.GameLogic
 {
     public class FieldManager
     {
-        public Color?[,] Cells { get; private set; }
+        public BonusColor?[,] Cells { get; private set; }
 
         private int cols;
         private int rows;
@@ -14,17 +14,12 @@ namespace BlockAdventures.GameLogic
         {
             cols = fieldCols;
             rows = fieldRows;
-            Cells = new Color?[cols, rows];
+            Cells = new BonusColor?[cols, rows];
         }
 
-        public Color GetCellColor(int col, int row, Color emptyColor)
+        public BonusColor? GetCellColor(int col, int row)
         {
-            if (Cells[col, row].HasValue)
-            {
-                return Cells[col, row].Value;
-            }
-
-            return emptyColor;
+            return Cells[col, row];
         }
 
         public void PutFigure(FigureModel figure, int startCol, int startRow)
@@ -173,7 +168,7 @@ namespace BlockAdventures.GameLogic
             return clearedColumns;
         }
 
-        public void ClearColor(Color color)
+        public void ClearColor(BonusColor color)
         {
             for (var row = 0; row < rows; row++)
             {
@@ -184,7 +179,7 @@ namespace BlockAdventures.GameLogic
                         continue;
                     }
 
-                    if (Cells[col, row].Value.ToArgb() == color.ToArgb())
+                    if (Cells[col, row].Value == color)
                     {
                         Cells[col, row] = null;
                     }

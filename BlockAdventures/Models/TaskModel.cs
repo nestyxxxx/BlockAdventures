@@ -11,16 +11,22 @@
 
     public enum TaskType
     {
-        FillCornersRed,
-        FillRowRed,
+        FillTopRowRed,
+        FillBottomRowGreen,
+        FillAnyRowYellow,
+        FillAnyRowBlue,
 
+        FillLeftColumnRed,
         FillRightColumnBlue,
+        FillAnyColumnGreen,
+        FillCenterColumnYellow,
+
+        FillCornersRed,
         FillCornersBlue,
+        FillTopCornersYellow,
+        FillBottomCornersGreen,
 
         FillCenterGreen,
-        FillColumnGreen,
-
-        FillTopRowYellow,
         FillCenterYellow
     }
 

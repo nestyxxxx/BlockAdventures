@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 
 namespace BlockAdventures.Models
 {
@@ -8,7 +7,7 @@ namespace BlockAdventures.Models
     {
         private static readonly Random random = new Random();
 
-        private static readonly List<bool[,]> shapes = new List<bool[,]>
+        private static readonly List<bool[,]> baseShapes = new List<bool[,]>
         {
             new bool[,]
             {
@@ -74,30 +73,108 @@ namespace BlockAdventures.Models
             }
         };
 
-        private static readonly Color[] colors =
+        private static readonly List<bool[,]> allShapes = CreateAllShapes();
+
+        private static readonly BonusColor[] colors =
         {
-            Color.FromArgb(196, 72, 56),
-            Color.FromArgb(92, 176, 78),
-            Color.FromArgb(222, 198, 68),
-            Color.FromArgb(78, 180, 220)
+            BonusColor.Red,
+            BonusColor.Green,
+            BonusColor.Yellow,
+            BonusColor.Blue
         };
 
         public static FigureModel Generate()
         {
-            bool[,] shape = shapes[random.Next(shapes.Count)];
-            Color color = colors[random.Next(colors.Length)];
+            var shape = allShapes[random.Next(allShapes.Count)];
+            var color = colors[random.Next(colors.Length)];
 
-            bool[,] copy = new bool[3, 3];
+            return new FigureModel(CopyShape(shape), color);
+        }
 
-            for (int x = 0; x < 3; x++)
+        private static List<bool[,]> CreateAllShapes()
+        {
+            var result = new List<bool[,]>();
+
+            foreach (var baseShape in baseShapes)
             {
-                for (int y = 0; y < 3; y++)
+                AddUniqueRotations(result, baseShape);
+            }
+
+            return result;
+        }
+
+        private static void AddUniqueRotations(List<bool[,]> result, bool[,] shape)
+        {
+            var current = CopyShape(shape);
+
+            for (var i = 0; i < 4; i++)
+            {
+                if (!ContainsShape(result, current))
                 {
-                    copy[x, y] = shape[x, y];
+                    result.Add(CopyShape(current));
+                }
+
+                current = RotateClockwise(current);
+            }
+        }
+
+        private static bool ContainsShape(List<bool[,]> shapes, bool[,] newShape)
+        {
+            foreach (var shape in shapes)
+            {
+                if (AreEqual(shape, newShape))
+                {
+                    return true;
                 }
             }
 
-            return new FigureModel(copy, color);
+            return false;
+        }
+
+        private static bool AreEqual(bool[,] first, bool[,] second)
+        {
+            for (var x = 0; x < 3; x++)
+            {
+                for (var y = 0; y < 3; y++)
+                {
+                    if (first[x, y] != second[x, y])
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private static bool[,] CopyShape(bool[,] source)
+        {
+            var copy = new bool[3, 3];
+
+            for (var x = 0; x < 3; x++)
+            {
+                for (var y = 0; y < 3; y++)
+                {
+                    copy[x, y] = source[x, y];
+                }
+            }
+
+            return copy;
+        }
+
+        private static bool[,] RotateClockwise(bool[,] source)
+        {
+            var rotated = new bool[3, 3];
+
+            for (var x = 0; x < 3; x++)
+            {
+                for (var y = 0; y < 3; y++)
+                {
+                    rotated[x, y] = source[y, 2 - x];
+                }
+            }
+
+            return rotated;
         }
     }
 }
